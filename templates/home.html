@@ -12,8 +12,8 @@
 <div class="grid grid-cols-1 gap-4">
     {% for key, url in dbs.items() %}
     <a href="/db/{{ key }}" class="p-4 bg-white shadow rounded hover:bg-blue-50">
-        <strong>{{ key }}</strong>
-        <div class="text-gray-500">{{ url }}</div>
+        <strong class="text-lg">{{ key }}</strong>
+        <div class="text-gray-500 text-sm">{{ url }}</div>
     </a>
     {% endfor %}
 </div>
