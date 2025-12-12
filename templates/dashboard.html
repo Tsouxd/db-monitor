@@ -149,5 +149,37 @@
     </div>
 </div>
 
+<script>
+    // Toggle formulaire d'insertion
+    function toggleForm() {
+        const form = document.getElementById('insert-form');
+        form.classList.toggle('hidden');
+    }
+
+    // Ouvre le modal de modification
+    function openUpdateModal(rowIndex) {
+        const modal = document.getElementById('update-modal');
+        const rowData = JSON.parse(document.getElementById('row-data-' + rowIndex).textContent);
+
+        const form = document.getElementById('update-form');
+
+        // ✅ IMPORTANT : mettre l'ID de la ligne dans l'input hidden
+        const rowIdInput = form.querySelector('input[name="row_id"]');
+        rowIdInput.value = rowData.id;
+
+        {% for col in columns %}
+            {% if col != 'id' and col != 'date' %}
+                form.elements['{{ col }}'].value = rowData['{{ col }}'];
+            {% endif %}
+        {% endfor %}
+
+        modal.classList.remove('hidden');
+    }
+
+    function closeUpdateModal() {
+        document.getElementById('update-modal').classList.add('hidden');
+    }
+</script>
+
 </body>
 </html>
