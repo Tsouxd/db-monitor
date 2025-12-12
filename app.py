@@ -1,8 +1,9 @@
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, Response
 import psycopg2
 import os
 from dotenv import load_dotenv
 from datetime import datetime
+import csv
 
 load_dotenv()
 app = Flask(__name__)
@@ -148,7 +149,41 @@ def db_dashboard(db_key):
         )
     except Exception as e:
         return f"Erreur SQL: {e}"
+    
+@app.route("/db/<db_key>/table/<table>/export_csv")
+def export_csv(db_key, table):
+    conn, err = get_conn(db_key)
+    if err:
+        flash(f"Erreur connexion: {err}", "error")
+        return redirect(url_for("db_dashboard", db_key=db_key, table=table))
 
+    try:
+        cur = conn.cursor()
+        cur.execute(f'SELECT * FROM "{table}"')
+        rows = cur.fetchall()
+        columns = [desc[0] for desc in cur.description]
+        conn.close()
+
+        def generate():
+            output = csv.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(columns)
+            yield output.getvalue()
+            output.seek(0)
+            output.truncate(0)
+            for row in rows:
+                writer.writerow(row)
+                yield output.getvalue()
+                output.seek(0)
+                output.truncate(0)
+
+        filename = f"{table}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        return Response(generate(), mimetype="text/csv",
+                        headers={"Content-Disposition": f"attachment; filename={filename}"})
+    except Exception as e:
+        flash(f"❌ Erreur export CSV: {e}", "error")
+        return redirect(url_for("db_dashboard", db_key=db_key, table=table))
+    
 # ---------------- HOME ----------------
 @app.route("/")
 def home():
