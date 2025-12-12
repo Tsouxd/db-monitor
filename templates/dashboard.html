@@ -76,7 +76,7 @@
                 </tbody>
             </table>
 
-            <!-- Formulaire d'insertion -->
+            <!-- Formulaire d'insertion 
             <h3 class="text-xl font-semibold mb-2">➕ Ajouter une ligne</h3>
             <form method="POST" action="/db/{{ db_key }}/table/{{ selected_table }}/insert" class="grid gap-2 grid-cols-2">
                 {% for col in columns %}
@@ -84,7 +84,7 @@
                     <input type="hidden" name="col[]" value="{{ col }}">
                 {% endfor %}
                 <button type="submit" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 col-span-2">Ajouter</button>
-            </form>
+            </form>-->
 
         {% else %}
             <p class="text-gray-500">Choisissez une table…</p>
