@@ -5,17 +5,19 @@
     <title>DB Monitor - {{ db_key }}</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
+        // Toggle formulaire d'insertion
         function toggleForm() {
             const form = document.getElementById('insert-form');
             form.classList.toggle('hidden');
         }
 
+        // Ouvre le modal de modification
         function openUpdateModal(rowIndex) {
             const modal = document.getElementById('update-modal');
             const rowData = JSON.parse(document.getElementById('row-data-' + rowIndex).textContent);
-            
+
             const form = document.getElementById('update-form');
-            form.dataset.rowId = rowData.id;
+            form.dataset.rowId = rowData.id; // Utilisé côté app.py
 
             {% for col in columns %}
                 {% if col != 'id' and col != 'date' %}
@@ -79,7 +81,7 @@
             <form id="insert-form" method="POST" action="/db/{{ db_key }}/table/{{ selected_table }}/insert" class="grid gap-2 grid-cols-2 hidden mb-6">
                 {% for col in columns %}
                     {% if col != 'id' and col != 'date' %}
-                        <input type="text" name="val[]" placeholder="{{ col }}" class="border p-2 rounded">
+                        <input type="text" name="val[]" placeholder="{{ col }}" class="border p-2 rounded" required>
                         <input type="hidden" name="col[]" value="{{ col }}">
                     {% endif %}
                 {% endfor %}
@@ -98,19 +100,17 @@
                 </thead>
 
                 <tbody>
-                    {% for row in data %}
+                    {% for row in rows_dicts %}
                     <tr class="odd:bg-white even:bg-gray-100">
-                        {% for cell in row %}
-                        <td class="border p-2">{{ cell }}</td>
+                        {% for col in columns %}
+                        <td class="border p-2">{{ row[col] }}</td>
                         {% endfor %}
                         <td class="border p-2 flex gap-2">
                             <!-- Stockage des données pour le modal -->
-                            <span id="row-data-{{ loop.index0 }}" class="hidden">
-                                {{ dict(zip(columns, row)) | tojson }}
-                            </span>
+                            <span id="row-data-{{ loop.index0 }}" class="hidden">{{ row | tojson }}</span>
 
                             <!-- Supprimer -->
-                            <form method="POST" action="/db/{{ db_key }}/table/{{ selected_table }}/delete/{{ row[0] }}" onsubmit="return confirm('Supprimer cette ligne ?');">
+                            <form method="POST" action="/db/{{ db_key }}/table/{{ selected_table }}/delete/{{ row[columns[0]] }}" onsubmit="return confirm('Supprimer cette ligne ?');">
                                 <button type="submit" class="bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600">Supprimer</button>
                             </form>
 
@@ -130,9 +130,10 @@
                         {% for col in columns %}
                             {% if col != 'id' and col != 'date' %}
                                 <label>{{ col }}</label>
-                                <input type="text" name="{{ col }}" class="border p-2 rounded">
+                                <input type="text" name="{{ col }}" class="border p-2 rounded" required>
                             {% endif %}
                         {% endfor %}
+                        <input type="hidden" name="row_id">
                         <div class="col-span-2 flex justify-end gap-2 mt-4">
                             <button type="button" onclick="closeUpdateModal()" class="bg-gray-400 text-white px-4 py-2 rounded hover:bg-gray-500">Annuler</button>
                             <button type="submit" class="bg-yellow-400 text-white px-4 py-2 rounded hover:bg-yellow-500">Modifier</button>

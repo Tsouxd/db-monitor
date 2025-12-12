@@ -47,7 +47,7 @@ def get_primary_key(table, conn):
     result = cur.fetchone()
     return result[0] if result else None
 
-# CREATE
+# ---------------- CREATE ----------------
 @app.route("/db/<db_key>/table/<table>/insert", methods=["POST"])
 def insert_row(db_key, table):
     conn, err = get_conn(db_key)
@@ -56,10 +56,14 @@ def insert_row(db_key, table):
         return redirect(url_for("db_dashboard", db_key=db_key, table=table))
     try:
         cur = conn.cursor()
-        columns = request.form.getlist("col[]")
+        columns = request.form.getlist("col[]")  # uniquement les champs à remplir
         values = request.form.getlist("val[]")
         col_names = ", ".join([f'"{c}"' for c in columns])
         placeholders = ", ".join(["%s"] * len(values))
+        # insertion automatique de date si colonne "date" existe
+        if "date" in [c.lower() for c in columns]:
+            idx = [c.lower() for c in columns].index("date")
+            values[idx] = datetime.now()
         cur.execute(f'INSERT INTO "{table}" ({col_names}) VALUES ({placeholders})', values)
         conn.commit()
         conn.close()
@@ -68,7 +72,7 @@ def insert_row(db_key, table):
         flash(f"❌ Erreur insertion: {e}", "error")
     return redirect(url_for("db_dashboard", db_key=db_key, table=table))
 
-# DELETE
+# ---------------- DELETE ----------------
 @app.route("/db/<db_key>/table/<table>/delete/<pk>", methods=["POST"])
 def delete_row(db_key, table, pk):
     conn, err = get_conn(db_key)
@@ -86,7 +90,7 @@ def delete_row(db_key, table, pk):
         flash(f"❌ Erreur suppression: {e}", "error")
     return redirect(url_for("db_dashboard", db_key=db_key, table=table))
 
-# UPDATE
+# ---------------- UPDATE ----------------
 @app.route("/db/<db_key>/table/<table>/update", methods=["POST"])
 def update_row(db_key, table):
     conn, err = get_conn(db_key)
@@ -97,7 +101,7 @@ def update_row(db_key, table):
         cur = conn.cursor()
         pk_col = get_primary_key(table, conn)
         row_id = request.form.get("row_id")
-        columns = [k for k in request.form.keys() if k != "row_id"]
+        columns = [k for k in request.form.keys() if k != "row_id" and k.lower() != "id" and k.lower() != "date"]
         values = [request.form[k] for k in columns]
         set_clause = ", ".join([f'"{col}"=%s' for col in columns])
         cur.execute(f'UPDATE "{table}" SET {set_clause} WHERE "{pk_col}"=%s', values + [row_id])
@@ -108,7 +112,7 @@ def update_row(db_key, table):
         flash(f"❌ Erreur modification: {e}", "error")
     return redirect(url_for("db_dashboard", db_key=db_key, table=table))
 
-# DASHBOARD
+# ---------------- DASHBOARD ----------------
 @app.route("/db/<db_key>")
 def db_dashboard(db_key):
     if db_key not in DATABASES:
@@ -126,10 +130,9 @@ def db_dashboard(db_key):
         rows_dicts = []
 
         if selected_table:
-            cur.execute(f"SELECT * FROM {selected_table} ORDER BY 1 DESC LIMIT 50")
+            cur.execute(f'SELECT * FROM "{selected_table}" ORDER BY 1 DESC LIMIT 50')
             data = cur.fetchall()
             columns = [desc[0] for desc in cur.description]
-            # Transforme chaque ligne en dictionnaire pour le template
             rows_dicts = [dict(zip(columns, row)) for row in data]
 
         conn.close()
@@ -146,6 +149,7 @@ def db_dashboard(db_key):
     except Exception as e:
         return f"Erreur SQL: {e}"
 
+# ---------------- HOME ----------------
 @app.route("/")
 def home():
     db_display = {key: get_db_url(key) for key in DATABASES.keys()}
