@@ -4,6 +4,32 @@
     <meta charset="UTF-8">
     <title>DB Monitor - {{ db_key }}</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        function toggleForm() {
+            const form = document.getElementById('insert-form');
+            form.classList.toggle('hidden');
+        }
+
+        function openUpdateModal(rowIndex) {
+            const modal = document.getElementById('update-modal');
+            const rowData = JSON.parse(document.getElementById('row-data-' + rowIndex).textContent);
+            
+            const form = document.getElementById('update-form');
+            form.dataset.rowId = rowData.id;
+
+            {% for col in columns %}
+                {% if col != 'id' and col != 'date' %}
+                    form.elements['{{ col }}'].value = rowData['{{ col }}'];
+                {% endif %}
+            {% endfor %}
+
+            modal.classList.remove('hidden');
+        }
+
+        function closeUpdateModal() {
+            document.getElementById('update-modal').classList.add('hidden');
+        }
+    </script>
 </head>
 <body class="bg-gray-100 p-8">
 
@@ -16,7 +42,6 @@
     <!-- LISTE DES TABLES -->
     <div class="col-span-1 bg-white p-4 shadow rounded">
         <h2 class="text-xl font-semibold mb-4">Tables</h2>
-
         <ul>
             {% for t in tables %}
             <li class="mb-2">
@@ -32,7 +57,7 @@
         {% if selected_table %}
             <h2 class="text-2xl font-semibold mb-4">📌 Table : {{ selected_table }}</h2>
 
-            <!-- Affichage des messages flash -->
+            <!-- Messages flash -->
             {% with messages = get_flashed_messages(with_categories=true) %}
               {% if messages %}
                 <div class="mb-4">
@@ -44,6 +69,22 @@
                 </div>
               {% endif %}
             {% endwith %}
+
+            <!-- Bouton pour afficher le formulaire d'insertion -->
+            <button onclick="toggleForm()" class="bg-green-500 text-white px-4 py-2 rounded mb-4 hover:bg-green-600">
+                ➕ Ajouter une ligne
+            </button>
+
+            <!-- Formulaire d'insertion (hidden par défaut) -->
+            <form id="insert-form" method="POST" action="/db/{{ db_key }}/table/{{ selected_table }}/insert" class="grid gap-2 grid-cols-2 hidden mb-6">
+                {% for col in columns %}
+                    {% if col != 'id' and col != 'date' %}
+                        <input type="text" name="val[]" placeholder="{{ col }}" class="border p-2 rounded">
+                        <input type="hidden" name="col[]" value="{{ col }}">
+                    {% endif %}
+                {% endfor %}
+                <button type="submit" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 col-span-2">Ajouter</button>
+            </form>
 
             <!-- Tableau des données -->
             <table class="table-auto w-full border border-gray-300 mb-6">
@@ -63,28 +104,42 @@
                         <td class="border p-2">{{ cell }}</td>
                         {% endfor %}
                         <td class="border p-2 flex gap-2">
-                            <!-- Bouton Supprimer -->
+                            <!-- Stockage des données pour le modal -->
+                            <span id="row-data-{{ loop.index0 }}" class="hidden">
+                                {{ dict(zip(columns, row)) | tojson }}
+                            </span>
+
+                            <!-- Supprimer -->
                             <form method="POST" action="/db/{{ db_key }}/table/{{ selected_table }}/delete/{{ row[0] }}" onsubmit="return confirm('Supprimer cette ligne ?');">
                                 <button type="submit" class="bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600">Supprimer</button>
                             </form>
 
-                            <!-- Bouton Update (préparer future modal ou page) -->
-                            <a href="#" class="bg-yellow-400 text-white px-2 py-1 rounded hover:bg-yellow-500">Modifier</a>
+                            <!-- Modifier -->
+                            <button type="button" onclick="openUpdateModal({{ loop.index0 }})" class="bg-yellow-400 text-white px-2 py-1 rounded hover:bg-yellow-500">Modifier</button>
                         </td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
 
-            <!-- Formulaire d'insertion 
-            <h3 class="text-xl font-semibold mb-2">➕ Ajouter une ligne</h3>
-            <form method="POST" action="/db/{{ db_key }}/table/{{ selected_table }}/insert" class="grid gap-2 grid-cols-2">
-                {% for col in columns %}
-                    <input type="text" name="val[]" placeholder="{{ col }}" class="border p-2 rounded">
-                    <input type="hidden" name="col[]" value="{{ col }}">
-                {% endfor %}
-                <button type="submit" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 col-span-2">Ajouter</button>
-            </form>-->
+            <!-- Modal de modification -->
+            <div id="update-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
+                <div class="bg-white p-6 rounded shadow w-1/3">
+                    <h3 class="text-xl font-semibold mb-4">✏️ Modifier la ligne</h3>
+                    <form id="update-form" method="POST" action="/db/{{ db_key }}/table/{{ selected_table }}/update" class="grid gap-2 grid-cols-2">
+                        {% for col in columns %}
+                            {% if col != 'id' and col != 'date' %}
+                                <label>{{ col }}</label>
+                                <input type="text" name="{{ col }}" class="border p-2 rounded">
+                            {% endif %}
+                        {% endfor %}
+                        <div class="col-span-2 flex justify-end gap-2 mt-4">
+                            <button type="button" onclick="closeUpdateModal()" class="bg-gray-400 text-white px-4 py-2 rounded hover:bg-gray-500">Annuler</button>
+                            <button type="submit" class="bg-yellow-400 text-white px-4 py-2 rounded hover:bg-yellow-500">Modifier</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
 
         {% else %}
             <p class="text-gray-500">Choisissez une table…</p>
