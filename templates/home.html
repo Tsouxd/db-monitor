@@ -5,18 +5,66 @@
     <title>DB Monitor</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100 p-10">
+<body class="bg-slate-800 min-h-screen">
 
-<h1 class="text-3xl font-bold mb-6">📁 Choisir une Base de Données</h1>
+<!-- Header -->
+<header class="bg-slate-900 border-b border-slate-700 px-6 py-4">
+    <div class="flex items-center gap-3">
+        <svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path>
+        </svg>
+        <h1 class="text-2xl font-semibold text-white">DB Monitor</h1>
+    </div>
+</header>
 
-<div class="grid grid-cols-1 gap-4">
-    {% for key, url in dbs.items() %}
-    <a href="/db/{{ key }}" class="p-4 bg-white shadow rounded hover:bg-blue-50">
-        <strong class="text-lg">{{ key }}</strong>
-        <div class="text-gray-500 text-sm">{{ url }}</div>
-    </a>
-    {% endfor %}
-</div>
+<!-- Main Content -->
+<main class="p-6">
+    <div class="max-w-5xl mx-auto">
+        <div class="mb-6">
+            <h2 class="text-xl font-medium text-slate-200 mb-2">Servers</h2>
+            <p class="text-slate-400 text-sm">Select a database server to connect</p>
+        </div>
+
+        <div class="grid grid-cols-1 gap-3">
+            {% for key, url in dbs.items() %}
+            <a href="/db/{{ key }}" class="group bg-slate-700 border border-slate-600 rounded-lg p-4 hover:bg-slate-600 hover:border-blue-500 transition-all duration-200">
+                <div class="flex items-center gap-4">
+                    <!-- Database Icon -->
+                    <div class="flex-shrink-0 w-12 h-12 bg-blue-500 bg-opacity-20 rounded-lg flex items-center justify-center group-hover:bg-opacity-30 transition-colors">
+                        <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"></path>
+                        </svg>
+                    </div>
+                    
+                    <!-- Database Info -->
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 mb-1">
+                            <h3 class="text-lg font-medium text-white">{{ key }}</h3>
+                            <span class="px-2 py-0.5 bg-green-500 bg-opacity-20 text-green-400 text-xs rounded-full border border-green-500 border-opacity-30">Active</span>
+                        </div>
+                        <p class="text-slate-400 text-sm font-mono truncate">{{ url }}</p>
+                    </div>
+
+                    <!-- Arrow Icon -->
+                    <div class="flex-shrink-0">
+                        <svg class="w-5 h-5 text-slate-400 group-hover:text-blue-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                        </svg>
+                    </div>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+</main>
+
+<!-- Footer -->
+<footer class="fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-700 px-6 py-3">
+    <div class="flex items-center justify-between text-xs text-slate-400">
+        <span>DB Monitor v1.0</span>
+        <span>{{ dbs|length }} server(s) configured</span>
+    </div>
+</footer>
 
 </body>
 </html>
