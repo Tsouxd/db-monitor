@@ -17,43 +17,69 @@
     </div>
 </header>
 
+<!-- Flash Messages -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <div class="max-w-5xl mx-auto px-6 py-4">
+      {% for category, message in messages %}
+        <div class="flex items-center gap-2 p-3 mb-2 rounded-md {{ 'bg-green-500 bg-opacity-20 border border-green-500 border-opacity-30 text-green-300' if category=='success' else 'bg-red-500 bg-opacity-20 border border-red-500 border-opacity-30 text-red-300' }}">
+            <span class="text-sm">{{ message }}</span>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}
+
 <!-- Main Content -->
 <main class="p-6">
-    <div class="max-w-5xl mx-auto">
-        <div class="mb-6">
-            <h2 class="text-xl font-medium text-slate-200 mb-2">Servers</h2>
-            <p class="text-slate-400 text-sm">Select a database server to connect</p>
+    <div class="max-w-5xl mx-auto space-y-6">
+
+        <!-- Custom DB Form -->
+        <div class="bg-slate-900 border border-slate-700 rounded-lg p-6">
+            <h2 class="text-xl font-medium text-slate-200 mb-3">Connect to a Custom Database</h2>
+            <form method="POST" action="/" class="flex flex-col sm:flex-row gap-3">
+                <input type="text" name="db_url" placeholder="Enter your database URL" class="flex-1 bg-slate-800 border border-slate-600 text-slate-200 px-3 py-2 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" required>
+                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">Connect</button>
+            </form>
         </div>
 
-        <div class="grid grid-cols-1 gap-3">
-            {% for key, url in dbs.items() %}
-            <a href="/db/{{ key }}" class="group bg-slate-700 border border-slate-600 rounded-lg p-4 hover:bg-slate-600 hover:border-blue-500 transition-all duration-200">
-                <div class="flex items-center gap-4">
-                    <!-- Database Icon -->
-                    <div class="flex-shrink-0 w-12 h-12 bg-blue-500 bg-opacity-20 rounded-lg flex items-center justify-center group-hover:bg-opacity-30 transition-colors">
-                        <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"></path>
-                        </svg>
-                    </div>
-                    
-                    <!-- Database Info -->
-                    <div class="flex-1 min-w-0">
-                        <div class="flex items-center gap-2 mb-1">
-                            <h3 class="text-lg font-medium text-white">{{ key }}</h3>
-                            <span class="px-2 py-0.5 bg-green-500 bg-opacity-20 text-green-400 text-xs rounded-full border border-green-500 border-opacity-30">Active</span>
-                        </div>
-                        <p class="text-slate-400 text-sm font-mono truncate">{{ url }}</p>
-                    </div>
+        <!-- Preconfigured Servers -->
+        <div>
+            <div class="mb-4">
+                <h2 class="text-xl font-medium text-slate-200 mb-2">Servers</h2>
+                <p class="text-slate-400 text-sm">Select a database server to connect</p>
+            </div>
 
-                    <!-- Arrow Icon -->
-                    <div class="flex-shrink-0">
-                        <svg class="w-5 h-5 text-slate-400 group-hover:text-blue-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
-                        </svg>
+            <div class="grid grid-cols-1 gap-3">
+                {% for key, url in dbs.items() %}
+                <a href="/db/{{ key }}" class="group bg-slate-700 border border-slate-600 rounded-lg p-4 hover:bg-slate-600 hover:border-blue-500 transition-all duration-200">
+                    <div class="flex items-center gap-4">
+                        <!-- Database Icon -->
+                        <div class="flex-shrink-0 w-12 h-12 bg-blue-500 bg-opacity-20 rounded-lg flex items-center justify-center group-hover:bg-opacity-30 transition-colors">
+                            <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"></path>
+                            </svg>
+                        </div>
+                        
+                        <!-- Database Info -->
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2 mb-1">
+                                <h3 class="text-lg font-medium text-white">{{ key }}</h3>
+                                <span class="px-2 py-0.5 bg-green-500 bg-opacity-20 text-green-400 text-xs rounded-full border border-green-500 border-opacity-30">Active</span>
+                            </div>
+                            <p class="text-slate-400 text-sm font-mono truncate">{{ url }}</p>
+                        </div>
+
+                        <!-- Arrow Icon -->
+                        <div class="flex-shrink-0">
+                            <svg class="w-5 h-5 text-slate-400 group-hover:text-blue-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                            </svg>
+                        </div>
                     </div>
-                </div>
-            </a>
-            {% endfor %}
+                </a>
+                {% endfor %}
+            </div>
         </div>
     </div>
 </main>

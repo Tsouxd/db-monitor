@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, Response
+from flask import Flask, render_template, request, redirect, url_for, flash, Response, session
 import psycopg2
 import os
 from dotenv import load_dotenv
@@ -25,7 +25,21 @@ def get_db_url(db_key):
         return None
     return db["internal"] if USE_INTERNAL else db["external"]
 
-def get_conn(db_key):
+def get_conn(db_key=None):
+    """
+    Retourne une connexion psycopg2.
+    Priorité à la DB custom stockée en session.
+    """
+    if 'custom_db_url' in session:
+        try:
+            conn = psycopg2.connect(session['custom_db_url'])
+            return conn, None
+        except Exception as e:
+            return None, str(e)
+    
+    if db_key is None:
+        return None, "DB key manquante"
+
     url = get_db_url(db_key)
     if not url:
         return None, f"URL DB manquante pour '{db_key}'"
@@ -57,11 +71,10 @@ def insert_row(db_key, table):
         return redirect(url_for("db_dashboard", db_key=db_key, table=table))
     try:
         cur = conn.cursor()
-        columns = request.form.getlist("col[]")  # uniquement les champs à remplir
+        columns = request.form.getlist("col[]")
         values = request.form.getlist("val[]")
         col_names = ", ".join([f'"{c}"' for c in columns])
         placeholders = ", ".join(["%s"] * len(values))
-        # insertion automatique de date si colonne "date" existe
         if "date" in [c.lower() for c in columns]:
             idx = [c.lower() for c in columns].index("date")
             values[idx] = datetime.now()
@@ -116,7 +129,7 @@ def update_row(db_key, table):
 # ---------------- DASHBOARD ----------------
 @app.route("/db/<db_key>")
 def db_dashboard(db_key):
-    if db_key not in DATABASES:
+    if db_key not in DATABASES and 'custom_db_url' not in session:
         return f"DB '{db_key}' inconnue", 404
     conn, err = get_conn(db_key)
     if err:
@@ -126,7 +139,6 @@ def db_dashboard(db_key):
         cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='public'")
         tables = [t[0] for t in cur.fetchall()]
         selected_table = request.args.get("table")
-        data = []
         columns = []
         rows_dicts = []
 
@@ -139,9 +151,8 @@ def db_dashboard(db_key):
         conn.close()
         return render_template(
             "dashboard.html",
-            db_key=db_key,
+            db_key=db_key if db_key else "Custom DB",
             tables=tables,
-            data=data,
             columns=columns,
             rows_dicts=rows_dicts,
             selected_table=selected_table,
@@ -149,14 +160,14 @@ def db_dashboard(db_key):
         )
     except Exception as e:
         return f"Erreur SQL: {e}"
-    
+
+# ---------------- EXPORT CSV ----------------
 @app.route("/db/<db_key>/table/<table>/export_csv")
 def export_csv(db_key, table):
     conn, err = get_conn(db_key)
     if err:
         flash(f"Erreur connexion: {err}", "error")
         return redirect(url_for("db_dashboard", db_key=db_key, table=table))
-
     try:
         cur = conn.cursor()
         cur.execute(f'SELECT * FROM "{table}"')
@@ -183,10 +194,26 @@ def export_csv(db_key, table):
     except Exception as e:
         flash(f"❌ Erreur export CSV: {e}", "error")
         return redirect(url_for("db_dashboard", db_key=db_key, table=table))
-    
+
 # ---------------- HOME ----------------
-@app.route("/")
+@app.route("/", methods=["GET", "POST"])
 def home():
+    if request.method == "POST":
+        db_url = request.form.get("db_url")
+        if not db_url:
+            flash("Veuillez saisir une URL valide", "error")
+            return redirect(url_for("home"))
+        try:
+            # Test de connexion
+            conn = psycopg2.connect(db_url)
+            conn.close()
+            session['custom_db_url'] = db_url
+            flash("✅ Connexion réussie !", "success")
+            return redirect(url_for("db_dashboard", db_key="custom"))
+        except Exception as e:
+            flash(f"Erreur connexion : {e}", "error")
+            return redirect(url_for("home"))
+
     db_display = {key: get_db_url(key) for key in DATABASES.keys()}
     return render_template("home.html", dbs=db_display)
 
