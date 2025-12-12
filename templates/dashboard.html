@@ -26,18 +26,33 @@
         </ul>
     </div>
 
-    <!-- DONNÉES -->
+    <!-- DONNÉES + CRUD -->
     <div class="col-span-3 bg-white p-6 shadow rounded">
 
         {% if selected_table %}
             <h2 class="text-2xl font-semibold mb-4">📌 Table : {{ selected_table }}</h2>
 
-            <table class="table-auto w-full border border-gray-300">
+            <!-- Affichage des messages flash -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+              {% if messages %}
+                <div class="mb-4">
+                  {% for category, message in messages %}
+                    <div class="p-2 mb-2 rounded {{ 'bg-green-200 text-green-800' if category=='success' else 'bg-red-200 text-red-800' }}">
+                        {{ message }}
+                    </div>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            {% endwith %}
+
+            <!-- Tableau des données -->
+            <table class="table-auto w-full border border-gray-300 mb-6">
                 <thead class="bg-gray-200">
                     <tr>
                         {% for col in columns %}
                         <th class="border p-2">{{ col }}</th>
                         {% endfor %}
+                        <th class="border p-2">Actions</th>
                     </tr>
                 </thead>
 
@@ -47,10 +62,29 @@
                         {% for cell in row %}
                         <td class="border p-2">{{ cell }}</td>
                         {% endfor %}
+                        <td class="border p-2 flex gap-2">
+                            <!-- Bouton Supprimer -->
+                            <form method="POST" action="/db/{{ db_key }}/table/{{ selected_table }}/delete/{{ row[0] }}" onsubmit="return confirm('Supprimer cette ligne ?');">
+                                <button type="submit" class="bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600">Supprimer</button>
+                            </form>
+
+                            <!-- Bouton Update (préparer future modal ou page) -->
+                            <a href="#" class="bg-yellow-400 text-white px-2 py-1 rounded hover:bg-yellow-500">Modifier</a>
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
+
+            <!-- Formulaire d'insertion -->
+            <h3 class="text-xl font-semibold mb-2">➕ Ajouter une ligne</h3>
+            <form method="POST" action="/db/{{ db_key }}/table/{{ selected_table }}/insert" class="grid gap-2 grid-cols-2">
+                {% for col in columns %}
+                    <input type="text" name="val[]" placeholder="{{ col }}" class="border p-2 rounded">
+                    <input type="hidden" name="col[]" value="{{ col }}">
+                {% endfor %}
+                <button type="submit" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 col-span-2">Ajouter</button>
+            </form>
 
         {% else %}
             <p class="text-gray-500">Choisissez une table…</p>
