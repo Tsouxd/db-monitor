@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from datetime import datetime
 import csv
 import io
+import gzip
 
 load_dotenv()
 app = Flask(__name__)
@@ -163,24 +164,16 @@ def export_sql():
     
     try:
         cur = conn.cursor()
-        # 1. Lister toutes les tables
         cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY table_name")
         tables = [t[0] for t in cur.fetchall()]
         
-        sql_output = f"-- DB Backup Render-Compatible - {datetime.now()}\n"
-        sql_output += "BEGIN;\n\n" # Début de la transaction
+        sql_output = f"-- DB Backup - {datetime.now()}\nBEGIN;\n\n"
 
         for table in tables:
-            # --- A. SUPPRESSION PROPRE (CASCADE gère les relations) ---
             sql_output += f'DROP TABLE IF EXISTS "{table}" CASCADE;\n'
-
-            # --- B. GÉNÉRATION DE LA STRUCTURE ---
-            cur.execute("""
-                SELECT column_name, data_type, is_nullable, column_default
-                FROM information_schema.columns 
-                WHERE table_name = %s 
-                ORDER BY ordinal_position
-            """, (table,))
+            
+            # Structure
+            cur.execute(f"SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_name = '{table}' ORDER BY ordinal_position")
             columns_info = cur.fetchall()
             
             sql_output += f'CREATE TABLE "{table}" (\n'
@@ -191,40 +184,37 @@ def export_sql():
                 if nullable == "NO": line += " NOT NULL"
                 if default: line += f" DEFAULT {default}"
                 col_defs.append(line)
-            
-            sql_output += ",\n".join(col_defs)
-            sql_output += "\n);\n\n"
+            sql_output += ",\n".join(col_defs) + "\n);\n\n"
 
-            # --- C. GÉNÉRATION DES DONNÉES ---
+            # Données
             cur.execute(f'SELECT * FROM "{table}"')
             rows = cur.fetchall()
             if rows:
                 col_names = [desc[0] for desc in cur.description]
                 col_str = ", ".join([f'"{c}"' for c in col_names])
-                
                 for row in rows:
                     vals = []
                     for v in row:
                         if v is None: vals.append("NULL")
                         elif isinstance(v, (int, float, bool)): vals.append(str(v).lower())
-                        else:
-                            vals.append(f"'{str(v).replace("'", "''")}'")
-                    
+                        else: vals.append(f"'{str(v).replace("'", "''")}'")
                     sql_output += f'INSERT INTO "{table}" ({col_str}) VALUES ({", ".join(vals)});\n'
                 
-                # Réinitialisation de la séquence d'ID (si une colonne 'id' existe)
                 if "id" in col_names:
                     sql_output += f"SELECT setval(pg_get_serial_sequence('\"{table}\"', 'id'), coalesce(MAX(id), 1)) FROM \"{table}\";\n"
-            
             sql_output += "\n"
 
-        sql_output += "COMMIT;\n" # Valider la transaction
+        sql_output += "COMMIT;\n"
         conn.close()
         
+        # --- COMPRESSION GZIP POUR PASSER LE WAF ---
         mem = io.BytesIO()
-        mem.write(sql_output.encode('utf-8'))
+        with gzip.GzipFile(fileobj=mem, mode='wb') as f:
+            f.write(sql_output.encode('utf-8'))
         mem.seek(0)
-        return send_file(mem, as_attachment=True, download_name=f"render_backup_{datetime.now().strftime('%Y%m%d')}.sql", mimetype="application/sql")
+        
+        filename = f"backup_{datetime.now().strftime('%Y%m%d')}.sql.gz"
+        return send_file(mem, as_attachment=True, download_name=filename, mimetype="application/gzip")
 
     except Exception as e:
         flash(f"❌ Erreur export: {e}", "error")
@@ -233,26 +223,29 @@ def export_sql():
 @app.route("/import_sql", methods=["POST"])
 def import_sql():
     file = request.files.get('sql_file')
-    if not file or not file.filename.endswith('.sql'):
-        flash("Fichier .sql requis", "error")
+    if not file:
+        flash("Aucun fichier", "error")
         return redirect(url_for("db_dashboard"))
     
     conn, err = get_conn()
     if err: return redirect(url_for("home"))
     
     try:
-        # Lecture du contenu
-        content = file.read().decode('utf-8')
-        
-        # On utilise un curseur pour exécuter le script
+        # Si le fichier finit par .gz, on le décompresse
+        if file.filename.endswith('.gz'):
+            with gzip.open(file, 'rb') as f:
+                content = f.read().decode('utf-8')
+        else:
+            content = file.read().decode('utf-8')
+            
         with conn.cursor() as cur:
             cur.execute(content)
         
-        conn.commit() # Important pour sauvegarder les changements
+        conn.commit()
         conn.close()
-        flash("✅ Base de données importée et synchronisée avec succès !", "success")
+        flash("✅ Importation réussie (via tunnel compressé) !", "success")
     except Exception as e:
-        if conn: conn.rollback() # Annule tout en cas d'erreur
+        if conn: conn.rollback()
         flash(f"❌ Erreur import: {e}", "error")
         
     return redirect(url_for("db_dashboard"))

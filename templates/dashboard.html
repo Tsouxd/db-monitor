@@ -854,12 +854,17 @@
                 </svg>
                 Full Dump (.sql)
             </a>
-            <form action="/import_sql" method="POST" enctype="multipart/form-data" onsubmit="return confirm('Attention : l\'importation peut écraser ou modifier vos données. Continuer ?')">
-                <label class="import-label">▶ Execute SQL Script</label>
-                <div class="file-input-wrapper" style="margin-bottom:8px;">
-                    <input type="file" name="sql_file" accept=".sql" required>
+            <!-- Import SQL Form -->
+            <form action="/import_sql" method="POST" enctype="multipart/form-data" onsubmit="return confirm('L\'importation va écraser les données. Continuer ?')">
+                <div class="space-y-2">
+                    <label class="block text-[10px] text-slate-500 uppercase font-bold tracking-tight">Import SQL (.sql ou .sql.gz)</label>
+                    <!-- Ajout de .gz dans les formats acceptés -->
+                    <input type="file" name="sql_file" accept=".sql,.gz" required 
+                        class="block w-full text-xs text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-slate-700 file:text-slate-300 hover:file:bg-slate-600 cursor-pointer">
+                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-1.5 px-3 rounded text-xs font-medium transition-colors">
+                        Run Import
+                    </button>
                 </div>
-                <button type="submit" class="run-import-btn">Run Import</button>
             </form>
         </div>
     </aside>
