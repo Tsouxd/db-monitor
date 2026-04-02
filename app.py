@@ -163,16 +163,18 @@ def export_sql():
     
     try:
         cur = conn.cursor()
-        # 1. Lister toutes les tables de la base
+        # 1. Lister toutes les tables
         cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY table_name")
         tables = [t[0] for t in cur.fetchall()]
         
-        sql_output = f"-- DB Backup - {datetime.now()}\n"
-        # Désactiver temporairement les contraintes pour éviter les erreurs de clés étrangères à l'import
-        sql_output += "SET session_replication_role = 'replica';\n\n"
+        sql_output = f"-- DB Backup Render-Compatible - {datetime.now()}\n"
+        sql_output += "BEGIN;\n\n" # Début de la transaction
 
         for table in tables:
-            # --- A. GÉNÉRATION DE LA STRUCTURE (CREATE TABLE) ---
+            # --- A. SUPPRESSION PROPRE (CASCADE gère les relations) ---
+            sql_output += f'DROP TABLE IF EXISTS "{table}" CASCADE;\n'
+
+            # --- B. GÉNÉRATION DE LA STRUCTURE ---
             cur.execute("""
                 SELECT column_name, data_type, is_nullable, column_default
                 FROM information_schema.columns 
@@ -181,9 +183,7 @@ def export_sql():
             """, (table,))
             columns_info = cur.fetchall()
             
-            sql_output += f"-- Structure for {table}\n"
-            sql_output += f'CREATE TABLE IF NOT EXISTS "{table}" (\n'
-            
+            sql_output += f'CREATE TABLE "{table}" (\n'
             col_defs = []
             for col in columns_info:
                 name, dtype, nullable, default = col
@@ -195,45 +195,39 @@ def export_sql():
             sql_output += ",\n".join(col_defs)
             sql_output += "\n);\n\n"
 
-            # --- B. GÉNÉRATION DES DONNÉES (INSERT INTO) ---
+            # --- C. GÉNÉRATION DES DONNÉES ---
             cur.execute(f'SELECT * FROM "{table}"')
             rows = cur.fetchall()
             if rows:
                 col_names = [desc[0] for desc in cur.description]
                 col_str = ", ".join([f'"{c}"' for c in col_names])
                 
-                sql_output += f"-- Data for {table}\n"
                 for row in rows:
                     vals = []
                     for v in row:
                         if v is None: vals.append("NULL")
                         elif isinstance(v, (int, float, bool)): vals.append(str(v).lower())
                         else:
-                            # On échappe les quotes et on entoure de simple quotes
-                            escaped = str(v).replace("'", "''")
-                            vals.append(f"'{escaped}'")
+                            vals.append(f"'{str(v).replace("'", "''")}'")
                     
                     sql_output += f'INSERT INTO "{table}" ({col_str}) VALUES ({", ".join(vals)});\n'
                 
-                # C. RÉINITIALISATION DES SÉQUENCES (pour les colonnes ID SERIAL)
-                # Cela évite les erreurs "duplicate key" lors des futurs inserts manuels
-                sql_output += f"SELECT setval(pg_get_serial_sequence('\"{table}\"', 'id'), MAX(id)) FROM \"{table}\";\n"
+                # Réinitialisation de la séquence d'ID (si une colonne 'id' existe)
+                if "id" in col_names:
+                    sql_output += f"SELECT setval(pg_get_serial_sequence('\"{table}\"', 'id'), coalesce(MAX(id), 1)) FROM \"{table}\";\n"
             
             sql_output += "\n"
 
-        # Réactiver les contraintes
-        sql_output += "SET session_replication_role = 'origin';\n"
-        
+        sql_output += "COMMIT;\n" # Valider la transaction
         conn.close()
         
-        # Envoi du fichier
         mem = io.BytesIO()
         mem.write(sql_output.encode('utf-8'))
         mem.seek(0)
-        return send_file(mem, as_attachment=True, download_name=f"full_export_{datetime.now().strftime('%Y%m%d')}.sql", mimetype="application/sql")
+        return send_file(mem, as_attachment=True, download_name=f"render_backup_{datetime.now().strftime('%Y%m%d')}.sql", mimetype="application/sql")
 
     except Exception as e:
-        flash(f"❌ Erreur lors de la génération du SQL : {e}", "error")
+        flash(f"❌ Erreur export: {e}", "error")
         return redirect(url_for("db_dashboard"))
     
 @app.route("/import_sql", methods=["POST"])
@@ -245,14 +239,22 @@ def import_sql():
     
     conn, err = get_conn()
     if err: return redirect(url_for("home"))
+    
     try:
+        # Lecture du contenu
         content = file.read().decode('utf-8')
-        cur = conn.cursor()
-        cur.execute(content)
-        conn.commit()
-        flash("✅ Importation réussie !", "success")
+        
+        # On utilise un curseur pour exécuter le script
+        with conn.cursor() as cur:
+            cur.execute(content)
+        
+        conn.commit() # Important pour sauvegarder les changements
+        conn.close()
+        flash("✅ Base de données importée et synchronisée avec succès !", "success")
     except Exception as e:
+        if conn: conn.rollback() # Annule tout en cas d'erreur
         flash(f"❌ Erreur import: {e}", "error")
+        
     return redirect(url_for("db_dashboard"))
 
 @app.route("/table/<table>/export_csv")
