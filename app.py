@@ -163,33 +163,81 @@ def export_sql():
     if err: return redirect(url_for("home"))
     try:
         cur = conn.cursor()
+        # 1. Récupérer toutes les tables
         cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='public'")
         tables = [t[0] for t in cur.fetchall()]
         
-        sql_output = f"-- Backup Export - {datetime.now()}\n\n"
+        sql_output = f"-- Backup Export - {datetime.now()}\n"
+        sql_output += "SET standard_conforming_strings = on;\n"
+        sql_output += "SET check_function_bodies = false;\n\n"
+
         for table in tables:
+            # --- ÉTAPE A : Générer le CREATE TABLE ---
+            # On récupère le nom des colonnes et leur type de données
+            cur.execute("""
+                SELECT column_name, data_type, character_maximum_length, is_nullable
+                FROM information_schema.columns 
+                WHERE table_name = %s 
+                ORDER BY ordinal_position
+            """, (table,))
+            columns_info = cur.fetchall()
+            
+            sql_output += f"-- Structure for table: {table}\n"
+            sql_output += f'CREATE TABLE IF NOT EXISTS "{table}" (\n'
+            
+            col_defs = []
+            for col in columns_info:
+                name, dtype, length, nullable = col
+                definition = f'    "{name}" {dtype}'
+                if length:
+                    definition += f"({length})"
+                if nullable == "NO":
+                    definition += " NOT NULL"
+                col_defs.append(definition)
+            
+            sql_output += ",\n".join(col_defs)
+            sql_output += "\n);\n\n"
+
+            # --- ÉTAPE B : Générer les INSERT ---
             cur.execute(f'SELECT * FROM "{table}"')
             rows = cur.fetchall()
-            if not rows: continue
-            columns = [desc[0] for desc in cur.description]
-            col_str = ", ".join([f'"{c}"' for c in columns])
+            if not rows: 
+                sql_output += f"-- No data for {table}\n\n"
+                continue
             
+            col_names = [desc[0] for desc in cur.description]
+            col_str = ", ".join([f'"{c}"' for c in col_names])
+            
+            sql_output += f"-- Data for table: {table}\n"
             for row in rows:
                 vals = []
                 for v in row:
-                    if v is None: vals.append("NULL")
-                    elif isinstance(v, (int, float)): vals.append(str(v))
-                    else: vals.append(f"'{str(v).replace("'", "''")}'")
+                    if v is None:
+                        vals.append("NULL")
+                    elif isinstance(v, (int, float)):
+                        vals.append(str(v))
+                    elif isinstance(v, bool):
+                        vals.append("true" if v else "false")
+                    else:
+                        # Échappement des quotes pour éviter les erreurs SQL
+                        escaped = str(v).replace("'", "''")
+                        vals.append(f"'{escaped}'")
+                
                 sql_output += f'INSERT INTO "{table}" ({col_str}) VALUES ({", ".join(vals)});\n'
+            sql_output += "\n"
+
+        conn.close()
         
         mem = io.BytesIO()
         mem.write(sql_output.encode('utf-8'))
         mem.seek(0)
-        return send_file(mem, as_attachment=True, download_name="backup.sql", mimetype="application/sql")
-    except Exception as e:
-        flash(f"Erreur export: {e}", "error")
-        return redirect(url_for("db_dashboard"))
+        
+        return send_file(mem, as_attachment=True, download_name=f"full_backup_{datetime.now().strftime('%Y%m%d')}.sql", mimetype="application/sql")
 
+    except Exception as e:
+        flash(f"❌ Erreur export SQL complet: {e}", "error")
+        return redirect(url_for("db_dashboard"))
+    
 @app.route("/import_sql", methods=["POST"])
 def import_sql():
     file = request.files.get('sql_file')
