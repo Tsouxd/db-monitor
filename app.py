@@ -1,143 +1,86 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, Response, session
+from flask import Flask, render_template, request, redirect, url_for, flash, Response, session, send_file
 import psycopg2
 import os
 from dotenv import load_dotenv
 from datetime import datetime
 import csv
+import io
 
 load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET", "supersecret")
 
-APP_ENV = os.getenv("APP_ENV", "local")
-USE_INTERNAL = APP_ENV == "render"
+# ---------------- UTILS ----------------
 
-DATABASES = {
-    "vie_anterieure": {
-        "internal": os.getenv("DB_VIE_ANTERIEURE_INTERNAL"),
-        "external": os.getenv("DB_VIE_ANTERIEURE_EXTERNAL"),
-    },
-}
-
-def get_db_url(db_key):
-    db = DATABASES.get(db_key)
-    if not db:
-        return None
-    return db["internal"] if USE_INTERNAL else db["external"]
-
-def get_conn(db_key=None):
+def get_conn():
     """
-    Retourne une connexion psycopg2.
-    Priorité à la DB custom stockée en session.
+    Récupère la connexion à partir de l'URL stockée en session.
     """
-    if 'custom_db_url' in session:
-        try:
-            conn = psycopg2.connect(session['custom_db_url'])
-            return conn, None
-        except Exception as e:
-            return None, str(e)
-    
-    if db_key is None:
-        return None, "DB key manquante"
-
-    url = get_db_url(db_key)
-    if not url:
-        return None, f"URL DB manquante pour '{db_key}'"
+    db_url = session.get('custom_db_url')
+    if not db_url:
+        return None, "Aucune base de données connectée. Veuillez entrer une URL."
     try:
-        conn = psycopg2.connect(url)
+        conn = psycopg2.connect(db_url)
         return conn, None
     except Exception as e:
         return None, str(e)
 
 def get_primary_key(table, conn):
-    cur = conn.cursor()
-    cur.execute(f"""
-        SELECT a.attname
-        FROM   pg_index i
-        JOIN   pg_attribute a ON a.attrelid = i.indrelid
-                             AND a.attnum = ANY(i.indkey)
-        WHERE  i.indrelid = '{table}'::regclass
-        AND    i.indisprimary;
-    """)
-    result = cur.fetchone()
-    return result[0] if result else None
-
-# ---------------- CREATE ----------------
-@app.route("/db/<db_key>/table/<table>/insert", methods=["POST"])
-def insert_row(db_key, table):
-    conn, err = get_conn(db_key)
-    if err:
-        flash(f"Erreur connexion: {err}", "error")
-        return redirect(url_for("db_dashboard", db_key=db_key, table=table))
     try:
         cur = conn.cursor()
-        columns = request.form.getlist("col[]")
-        values = request.form.getlist("val[]")
-        col_names = ", ".join([f'"{c}"' for c in columns])
-        placeholders = ", ".join(["%s"] * len(values))
-        if "date" in [c.lower() for c in columns]:
-            idx = [c.lower() for c in columns].index("date")
-            values[idx] = datetime.now()
-        cur.execute(f'INSERT INTO "{table}" ({col_names}) VALUES ({placeholders})', values)
-        conn.commit()
-        conn.close()
-        flash("✅ Ligne insérée avec succès !", "success")
-    except Exception as e:
-        flash(f"❌ Erreur insertion: {e}", "error")
-    return redirect(url_for("db_dashboard", db_key=db_key, table=table))
+        cur.execute(f"""
+            SELECT a.attname
+            FROM   pg_index i
+            JOIN   pg_attribute a ON a.attrelid = i.indrelid
+                                 AND a.attnum = ANY(i.indkey)
+            WHERE  i.indrelid = %s::regclass
+            AND    i.indisprimary;
+        """, (table,))
+        result = cur.fetchone()
+        return result[0] if result else None
+    except:
+        return None
 
-# ---------------- DELETE ----------------
-@app.route("/db/<db_key>/table/<table>/delete/<pk>", methods=["POST"])
-def delete_row(db_key, table, pk):
-    conn, err = get_conn(db_key)
+# ---------------- ROUTES ----------------
+
+@app.route("/", methods=["GET", "POST"])
+def home():
+    if request.method == "POST":
+        db_url = request.form.get("db_url")
+        if not db_url:
+            flash("Veuillez saisir une URL valide", "error")
+            return redirect(url_for("home"))
+        try:
+            # Test de connexion immédiat
+            conn = psycopg2.connect(db_url)
+            conn.close()
+            session['custom_db_url'] = db_url
+            flash("✅ Connexion réussie !", "success")
+            return redirect(url_for("db_dashboard"))
+        except Exception as e:
+            flash(f"Erreur de connexion : {e}", "error")
+            return redirect(url_for("home"))
+
+    return render_template("home.html", connected_db=session.get('custom_db_url'))
+
+@app.route("/logout")
+def logout():
+    session.pop('custom_db_url', None)
+    flash("Déconnecté de la base de données", "success")
+    return redirect(url_for("home"))
+
+@app.route("/dashboard")
+def db_dashboard():
+    conn, err = get_conn()
     if err:
-        flash(f"Erreur connexion: {err}", "error")
-        return redirect(url_for("db_dashboard", db_key=db_key, table=table))
+        flash(err, "error")
+        return redirect(url_for("home"))
+    
     try:
         cur = conn.cursor()
-        pk_col = get_primary_key(table, conn)
-        cur.execute(f'DELETE FROM "{table}" WHERE "{pk_col}" = %s', (pk,))
-        conn.commit()
-        conn.close()
-        flash("✅ Ligne supprimée !", "success")
-    except Exception as e:
-        flash(f"❌ Erreur suppression: {e}", "error")
-    return redirect(url_for("db_dashboard", db_key=db_key, table=table))
-
-# ---------------- UPDATE ----------------
-@app.route("/db/<db_key>/table/<table>/update", methods=["POST"])
-def update_row(db_key, table):
-    conn, err = get_conn(db_key)
-    if err:
-        flash(f"Erreur connexion: {err}", "error")
-        return redirect(url_for("db_dashboard", db_key=db_key, table=table))
-    try:
-        cur = conn.cursor()
-        pk_col = get_primary_key(table, conn)
-        row_id = request.form.get("row_id")
-        columns = [k for k in request.form.keys() if k != "row_id" and k.lower() != "id" and k.lower() != "date"]
-        values = [request.form[k] for k in columns]
-        set_clause = ", ".join([f'"{col}"=%s' for col in columns])
-        cur.execute(f'UPDATE "{table}" SET {set_clause} WHERE "{pk_col}"=%s', values + [row_id])
-        conn.commit()
-        conn.close()
-        flash("✅ Ligne modifiée !", "success")
-    except Exception as e:
-        flash(f"❌ Erreur modification: {e}", "error")
-    return redirect(url_for("db_dashboard", db_key=db_key, table=table))
-
-# ---------------- DASHBOARD ----------------
-@app.route("/db/<db_key>")
-def db_dashboard(db_key):
-    if db_key not in DATABASES and 'custom_db_url' not in session:
-        return f"DB '{db_key}' inconnue", 404
-    conn, err = get_conn(db_key)
-    if err:
-        return f"Erreur connexion: {err}"
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='public'")
+        cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY table_name")
         tables = [t[0] for t in cur.fetchall()]
+        
         selected_table = request.args.get("table")
         columns = []
         rows_dicts = []
@@ -151,71 +94,143 @@ def db_dashboard(db_key):
         conn.close()
         return render_template(
             "dashboard.html",
-            db_key=db_key if db_key else "Custom DB",
+            db_key="Active DB",
             tables=tables,
             columns=columns,
             rows_dicts=rows_dicts,
-            selected_table=selected_table,
-            mode="internal" if USE_INTERNAL else "external"
+            selected_table=selected_table
         )
     except Exception as e:
-        return f"Erreur SQL: {e}"
+        flash(f"Erreur SQL: {e}", "error")
+        return redirect(url_for("home"))
 
-# ---------------- EXPORT CSV ----------------
-@app.route("/db/<db_key>/table/<table>/export_csv")
-def export_csv(db_key, table):
-    conn, err = get_conn(db_key)
-    if err:
-        flash(f"Erreur connexion: {err}", "error")
-        return redirect(url_for("db_dashboard", db_key=db_key, table=table))
+# ---------------- ACTIONS (CRUD) ----------------
+
+@app.route("/table/<table>/insert", methods=["POST"])
+def insert_row(table):
+    conn, err = get_conn()
+    if err: return redirect(url_for("home"))
+    try:
+        cur = conn.cursor()
+        columns = request.form.getlist("col[]")
+        values = request.form.getlist("val[]")
+        col_names = ", ".join([f'"{c}"' for c in columns])
+        placeholders = ", ".join(["%s"] * len(values))
+        cur.execute(f'INSERT INTO "{table}" ({col_names}) VALUES ({placeholders})', values)
+        conn.commit()
+        flash("✅ Ligne insérée !", "success")
+    except Exception as e:
+        flash(f"❌ Erreur: {e}", "error")
+    return redirect(url_for("db_dashboard", table=table))
+
+@app.route("/table/<table>/update", methods=["POST"])
+def update_row(table):
+    conn, err = get_conn()
+    if err: return redirect(url_for("home"))
+    try:
+        cur = conn.cursor()
+        pk_col = get_primary_key(table, conn)
+        row_id = request.form.get("row_id")
+        columns = [k for k in request.form.keys() if k not in ["row_id"]]
+        values = [request.form[k] for k in columns]
+        set_clause = ", ".join([f'"{col}"=%s' for col in columns])
+        cur.execute(f'UPDATE "{table}" SET {set_clause} WHERE "{pk_col}"=%s', values + [row_id])
+        conn.commit()
+        flash("✅ Ligne modifiée !", "success")
+    except Exception as e:
+        flash(f"❌ Erreur: {e}", "error")
+    return redirect(url_for("db_dashboard", table=table))
+
+@app.route("/table/<table>/delete/<pk>", methods=["POST"])
+def delete_row(table, pk):
+    conn, err = get_conn()
+    if err: return redirect(url_for("home"))
+    try:
+        cur = conn.cursor()
+        pk_col = get_primary_key(table, conn)
+        cur.execute(f'DELETE FROM "{table}" WHERE "{pk_col}" = %s', (pk,))
+        conn.commit()
+        flash("✅ Ligne supprimée !", "success")
+    except Exception as e:
+        flash(f"❌ Erreur: {e}", "error")
+    return redirect(url_for("db_dashboard", table=table))
+
+# ---------------- IMPORT / EXPORT ----------------
+
+@app.route("/export_sql")
+def export_sql():
+    conn, err = get_conn()
+    if err: return redirect(url_for("home"))
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='public'")
+        tables = [t[0] for t in cur.fetchall()]
+        
+        sql_output = f"-- Backup Export - {datetime.now()}\n\n"
+        for table in tables:
+            cur.execute(f'SELECT * FROM "{table}"')
+            rows = cur.fetchall()
+            if not rows: continue
+            columns = [desc[0] for desc in cur.description]
+            col_str = ", ".join([f'"{c}"' for c in columns])
+            
+            for row in rows:
+                vals = []
+                for v in row:
+                    if v is None: vals.append("NULL")
+                    elif isinstance(v, (int, float)): vals.append(str(v))
+                    else: vals.append(f"'{str(v).replace("'", "''")}'")
+                sql_output += f'INSERT INTO "{table}" ({col_str}) VALUES ({", ".join(vals)});\n'
+        
+        mem = io.BytesIO()
+        mem.write(sql_output.encode('utf-8'))
+        mem.seek(0)
+        return send_file(mem, as_attachment=True, download_name="backup.sql", mimetype="application/sql")
+    except Exception as e:
+        flash(f"Erreur export: {e}", "error")
+        return redirect(url_for("db_dashboard"))
+
+@app.route("/import_sql", methods=["POST"])
+def import_sql():
+    file = request.files.get('sql_file')
+    if not file or not file.filename.endswith('.sql'):
+        flash("Fichier .sql requis", "error")
+        return redirect(url_for("db_dashboard"))
+    
+    conn, err = get_conn()
+    if err: return redirect(url_for("home"))
+    try:
+        content = file.read().decode('utf-8')
+        cur = conn.cursor()
+        cur.execute(content)
+        conn.commit()
+        flash("✅ Importation réussie !", "success")
+    except Exception as e:
+        flash(f"❌ Erreur import: {e}", "error")
+    return redirect(url_for("db_dashboard"))
+
+@app.route("/table/<table>/export_csv")
+def export_csv(table):
+    conn, err = get_conn()
+    if err: return redirect(url_for("home"))
     try:
         cur = conn.cursor()
         cur.execute(f'SELECT * FROM "{table}"')
         rows = cur.fetchall()
         columns = [desc[0] for desc in cur.description]
-        conn.close()
-
-        def generate():
-            output = csv.StringIO()
-            writer = csv.writer(output)
-            writer.writerow(columns)
-            yield output.getvalue()
-            output.seek(0)
-            output.truncate(0)
-            for row in rows:
-                writer.writerow(row)
-                yield output.getvalue()
-                output.seek(0)
-                output.truncate(0)
-
-        filename = f"{table}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-        return Response(generate(), mimetype="text/csv",
-                        headers={"Content-Disposition": f"attachment; filename={filename}"})
+        
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(columns)
+        writer.writerows(rows)
+        
+        mem = io.BytesIO()
+        mem.write(output.getvalue().encode('utf-8'))
+        mem.seek(0)
+        return send_file(mem, as_attachment=True, download_name=f"{table}.csv", mimetype="text/csv")
     except Exception as e:
-        flash(f"❌ Erreur export CSV: {e}", "error")
-        return redirect(url_for("db_dashboard", db_key=db_key, table=table))
-
-# ---------------- HOME ----------------
-@app.route("/", methods=["GET", "POST"])
-def home():
-    if request.method == "POST":
-        db_url = request.form.get("db_url")
-        if not db_url:
-            flash("Veuillez saisir une URL valide", "error")
-            return redirect(url_for("home"))
-        try:
-            # Test de connexion
-            conn = psycopg2.connect(db_url)
-            conn.close()
-            session['custom_db_url'] = db_url
-            flash("✅ Connexion réussie !", "success")
-            return redirect(url_for("db_dashboard", db_key="custom"))
-        except Exception as e:
-            flash(f"Erreur connexion : {e}", "error")
-            return redirect(url_for("home"))
-
-    db_display = {key: get_db_url(key) for key in DATABASES.keys()}
-    return render_template("home.html", dbs=db_display)
+        flash(f"Erreur CSV: {e}", "error")
+        return redirect(url_for("db_dashboard", table=table))
 
 if __name__ == "__main__":
     app.run(port=5001, debug=True)

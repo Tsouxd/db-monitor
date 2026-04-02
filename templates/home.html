@@ -2,93 +2,594 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>DB Monitor</title>
+    <title>DB Monitor - Connection</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-deep: #050b18;
+            --bg-mid: #0a1628;
+            --bg-card: #0d1f3c;
+            --border: rgba(56, 139, 253, 0.15);
+            --border-glow: rgba(56, 139, 253, 0.4);
+            --accent: #3b82f6;
+            --accent-bright: #60a5fa;
+            --accent-dim: rgba(59, 130, 246, 0.12);
+            --green: #22c55e;
+            --text-primary: #e2e8f0;
+            --text-muted: #64748b;
+            --text-dim: #334155;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: 'Syne', sans-serif;
+            background: var(--bg-deep);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+
+        /* Animated grid background */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(56, 139, 253, 0.04) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(56, 139, 253, 0.04) 1px, transparent 1px);
+            background-size: 60px 60px;
+            z-index: 0;
+            animation: gridDrift 20s linear infinite;
+        }
+
+        @keyframes gridDrift {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(60px, 60px); }
+        }
+
+        /* Ambient orbs */
+        body::after {
+            content: '';
+            position: fixed;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(59, 130, 246, 0.08) 0%, transparent 70%);
+            top: -200px;
+            right: -100px;
+            z-index: 0;
+            animation: orbPulse 8s ease-in-out infinite alternate;
+        }
+
+        @keyframes orbPulse {
+            0% { transform: scale(1); opacity: 0.6; }
+            100% { transform: scale(1.2); opacity: 1; }
+        }
+
+        .orb-bottom {
+            position: fixed;
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle, rgba(34, 197, 94, 0.05) 0%, transparent 70%);
+            bottom: -100px;
+            left: -50px;
+            z-index: 0;
+            animation: orbPulse 10s ease-in-out infinite alternate-reverse;
+        }
+
+        header, main, footer, .z-content { position: relative; z-index: 1; }
+
+        /* Header */
+        header {
+            background: rgba(10, 22, 40, 0.8);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border);
+        }
+
+        /* Logo icon animation */
+        .db-icon {
+            width: 42px;
+            height: 42px;
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(59, 130, 246, 0.05));
+            border: 1px solid var(--border-glow);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+            animation: iconGlow 3s ease-in-out infinite alternate;
+        }
+
+        @keyframes iconGlow {
+            0% { box-shadow: 0 0 10px rgba(59, 130, 246, 0.2), inset 0 0 10px rgba(59, 130, 246, 0.05); }
+            100% { box-shadow: 0 0 25px rgba(59, 130, 246, 0.4), inset 0 0 20px rgba(59, 130, 246, 0.1); }
+        }
+
+        .db-icon::after {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(45deg, transparent, rgba(59, 130, 246, 0.1), transparent);
+            animation: shimmer 3s linear infinite;
+        }
+
+        @keyframes shimmer {
+            0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
+            100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
+        }
+
+        .brand-name {
+            font-family: 'Space Mono', monospace;
+            font-size: 1.25rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #e2e8f0 0%, #93c5fd 60%, #3b82f6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.02em;
+        }
+
+        /* Session badge */
+        .session-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(34, 197, 94, 0.08);
+            border: 1px solid rgba(34, 197, 94, 0.2);
+            padding: 6px 14px;
+            border-radius: 100px;
+            font-family: 'Space Mono', monospace;
+            font-size: 10px;
+            color: #4ade80;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+        }
+
+        .pulse-dot {
+            width: 7px;
+            height: 7px;
+            background: var(--green);
+            border-radius: 50%;
+            box-shadow: 0 0 8px var(--green);
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(0.8); }
+        }
+
+        /* Main card */
+        .main-card {
+            background: rgba(13, 31, 60, 0.6);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(59, 130, 246, 0.05);
+            animation: cardReveal 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
+
+        @keyframes cardReveal {
+            from { opacity: 0; transform: translateY(30px) scale(0.97); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        .card-header {
+            padding: 32px 36px 0;
+        }
+
+        .card-tag {
+            font-family: 'Space Mono', monospace;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            color: var(--accent-bright);
+            background: var(--accent-dim);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            padding: 4px 12px;
+            border-radius: 100px;
+            display: inline-block;
+            margin-bottom: 14px;
+        }
+
+        .card-title {
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            letter-spacing: -0.03em;
+            line-height: 1.2;
+        }
+
+        .card-subtitle {
+            color: var(--text-muted);
+            font-size: 0.875rem;
+            margin-top: 8px;
+            line-height: 1.6;
+        }
+
+        .card-subtitle code {
+            font-family: 'Space Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--accent-bright);
+            background: rgba(59, 130, 246, 0.1);
+            padding: 2px 8px;
+            border-radius: 5px;
+            border: 1px solid rgba(59, 130, 246, 0.2);
+        }
+
+        /* Form */
+        .form-area {
+            padding: 28px 36px;
+        }
+
+        .form-label {
+            font-family: 'Space Mono', monospace;
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            color: var(--text-muted);
+            display: block;
+            margin-bottom: 10px;
+        }
+
+        .form-textarea {
+            width: 100%;
+            background: rgba(5, 11, 24, 0.8);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 16px 18px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-family: 'Space Mono', monospace;
+            resize: none;
+            transition: all 0.3s ease;
+            outline: none;
+        }
+
+        .form-textarea::placeholder { color: #1e3a5f; }
+
+        .form-textarea:focus {
+            border-color: var(--border-glow);
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.08), 0 0 30px rgba(59, 130, 246, 0.1);
+        }
+
+        .submit-btn {
+            width: 100%;
+            background: linear-gradient(135deg, #2563eb, #3b82f6);
+            color: white;
+            padding: 15px;
+            border-radius: 12px;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.85rem;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            border: none;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+        }
+
+        .submit-btn::before {
+            content: '';
+            position: absolute;
+            top: 0; left: -100%;
+            width: 100%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+            transition: left 0.5s ease;
+        }
+
+        .submit-btn:hover::before { left: 100%; }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 40px rgba(59, 130, 246, 0.4);
+        }
+
+        .submit-btn:active { transform: translateY(0) scale(0.98); }
+
+        /* Card footer */
+        .card-footer {
+            background: rgba(5, 11, 24, 0.5);
+            border-top: 1px solid var(--border);
+            padding: 14px 36px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .lock-icon { color: var(--text-dim); flex-shrink: 0; }
+
+        .footer-note {
+            font-family: 'Space Mono', monospace;
+            font-size: 10px;
+            color: var(--text-dim);
+            letter-spacing: 0.03em;
+        }
+
+        /* Alert already connected */
+        .alert-connected {
+            background: rgba(59, 130, 246, 0.06);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            border-radius: 16px;
+            padding: 20px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            animation: cardReveal 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
+
+        .alert-connected-title {
+            font-weight: 600;
+            color: var(--accent-bright);
+            font-size: 0.95rem;
+            margin-bottom: 4px;
+        }
+
+        .alert-connected-sub {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .dashboard-btn {
+            flex-shrink: 0;
+            background: linear-gradient(135deg, #1d4ed8, #3b82f6);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 10px;
+            font-family: 'Space Mono', monospace;
+            font-size: 12px;
+            font-weight: 700;
+            text-decoration: none;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+
+        .dashboard-btn:hover {
+            box-shadow: 0 8px 25px rgba(59, 130, 246, 0.4);
+            transform: translateY(-1px);
+        }
+
+        /* Flash messages */
+        .flash-msg {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 16px;
+            border-radius: 10px;
+            font-size: 0.83rem;
+            margin-bottom: 16px;
+            font-family: 'Space Mono', monospace;
+        }
+
+        .flash-success {
+            background: rgba(34, 197, 94, 0.08);
+            border: 1px solid rgba(34, 197, 94, 0.2);
+            color: #4ade80;
+        }
+
+        .flash-error {
+            background: rgba(239, 68, 68, 0.08);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            color: #f87171;
+        }
+
+        /* Features row */
+        .features {
+            display: flex;
+            gap: 12px;
+            margin-top: 8px;
+        }
+
+        .feature-chip {
+            font-family: 'Space Mono', monospace;
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-dim);
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .feature-chip span {
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            background: var(--text-dim);
+        }
+
+        /* Footer */
+        footer {
+            background: rgba(10, 22, 40, 0.8);
+            backdrop-filter: blur(20px);
+            border-top: 1px solid var(--border);
+            padding: 14px 24px;
+        }
+
+        .footer-inner {
+            max-width: 48rem;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .footer-brand {
+            font-family: 'Space Mono', monospace;
+            font-size: 10px;
+            color: var(--text-dim);
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+
+        .footer-badges {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .footer-badge {
+            font-family: 'Space Mono', monospace;
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            padding: 4px 10px;
+            border-radius: 100px;
+        }
+
+        .badge-pg {
+            color: #60a5fa;
+            border: 1px solid rgba(96, 165, 250, 0.2);
+            background: rgba(59, 130, 246, 0.05);
+        }
+
+        .badge-mode {
+            color: var(--text-dim);
+            border: 1px solid rgba(100, 116, 139, 0.1);
+        }
+
+        /* Decorative db sticker */
+        .db-sticker {
+            position: absolute;
+            right: -60px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 180px;
+            height: 180px;
+            opacity: 0.06;
+            pointer-events: none;
+        }
+    </style>
 </head>
-<body class="bg-slate-800 min-h-screen">
+<body>
+
+<div class="orb-bottom"></div>
 
 <!-- Header -->
-<header class="bg-slate-900 border-b border-slate-700 px-6 py-4">
-    <div class="flex items-center gap-3">
-        <svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path>
-        </svg>
-        <h1 class="text-2xl font-semibold text-white">DB Monitor</h1>
+<header class="px-6 py-4 z-content" style="position:relative;">
+    <div class="flex items-center justify-between max-w-2xl mx-auto w-full">
+        <div class="flex items-center gap-3">
+            <div class="db-icon">
+                <svg class="w-5 h-5" style="color:#60a5fa;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path>
+                </svg>
+            </div>
+            <span class="brand-name">DB Monitor</span>
+        </div>
+
+        {% if session.get('custom_db_url') %}
+        <div class="session-badge">
+            <div class="pulse-dot"></div>
+            Session Active
+        </div>
+        {% endif %}
     </div>
 </header>
 
-<!-- Flash Messages -->
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}
-    <div class="max-w-5xl mx-auto px-6 py-4">
-      {% for category, message in messages %}
-        <div class="flex items-center gap-2 p-3 mb-2 rounded-md {{ 'bg-green-500 bg-opacity-20 border border-green-500 border-opacity-30 text-green-300' if category=='success' else 'bg-red-500 bg-opacity-20 border border-red-500 border-opacity-30 text-red-300' }}">
-            <span class="text-sm">{{ message }}</span>
-        </div>
-      {% endfor %}
-    </div>
-  {% endif %}
-{% endwith %}
-
 <!-- Main Content -->
-<main class="p-6">
-    <div class="max-w-5xl mx-auto space-y-6">
+<main class="flex-1 flex items-center justify-center p-6 z-content" style="position:relative;">
+    <div class="w-full max-w-2xl space-y-5">
 
-        <!-- Custom DB Form -->
-        <div class="bg-slate-900 border border-slate-700 rounded-lg p-6">
-            <h2 class="text-xl font-medium text-slate-200 mb-3">Connect to a Custom Database</h2>
-            <form method="POST" action="/" class="flex flex-col sm:flex-row gap-3">
-                <input type="text" name="db_url" placeholder="Enter your database URL" class="flex-1 bg-slate-800 border border-slate-600 text-slate-200 px-3 py-2 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" required>
-                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">Connect</button>
-            </form>
+        <!-- Info Card (Si déjà connecté) -->
+        {% if session.get('custom_db_url') %}
+        <div class="alert-connected">
+            <div>
+                <div class="alert-connected-title">⚡ Session en cours</div>
+                <div class="alert-connected-sub">Une connexion active est déjà établie sur cette session.</div>
+            </div>
+            <a href="{{ url_for('db_dashboard') }}" class="dashboard-btn">
+                Dashboard →
+            </a>
         </div>
+        {% endif %}
 
-        <!-- Preconfigured Servers -->
-        <div>
-            <div class="mb-4">
-                <h2 class="text-xl font-medium text-slate-200 mb-2">Servers</h2>
-                <p class="text-slate-400 text-sm">Select a database server to connect</p>
+        <!-- Connection Card -->
+        <div class="main-card" style="position:relative; overflow:visible;">
+            <!-- Decorative sticker -->
+            <svg class="db-sticker" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" style="position:absolute;">
+                <ellipse cx="50" cy="25" rx="40" ry="15" stroke="#3b82f6" stroke-width="3"/>
+                <path d="M10 25 Q10 50 50 60 Q90 50 90 25" stroke="#3b82f6" stroke-width="3"/>
+                <path d="M10 45 Q10 70 50 80 Q90 70 90 45" stroke="#3b82f6" stroke-width="3"/>
+                <path d="M10 65 Q10 85 50 95 Q90 85 90 65" stroke="#3b82f6" stroke-width="3"/>
+            </svg>
+
+            <div class="card-header">
+                <div class="card-tag">⬡ PostgreSQL Connection</div>
+                <div class="card-title">Connect to a Database</div>
+                <div class="card-subtitle">
+                    Entrez l'URL de connexion complète. Exemple :
+                    <code>postgres://user:pass@host:port/db</code>
+                </div>
             </div>
 
-            <div class="grid grid-cols-1 gap-3">
-                {% for key, url in dbs.items() %}
-                <a href="/db/{{ key }}" class="group bg-slate-700 border border-slate-600 rounded-lg p-4 hover:bg-slate-600 hover:border-blue-500 transition-all duration-200">
-                    <div class="flex items-center gap-4">
-                        <!-- Database Icon -->
-                        <div class="flex-shrink-0 w-12 h-12 bg-blue-500 bg-opacity-20 rounded-lg flex items-center justify-center group-hover:bg-opacity-30 transition-colors">
-                            <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"></path>
+            <div class="form-area">
+                <!-- Flash Messages -->
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                  {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="flash-msg {{ 'flash-success' if category=='success' else 'flash-error' }}">
+                            <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="{{ 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' if category=='success' else 'M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z' }}"></path>
                             </svg>
+                            {{ message }}
                         </div>
-                        
-                        <!-- Database Info -->
-                        <div class="flex-1 min-w-0">
-                            <div class="flex items-center gap-2 mb-1">
-                                <h3 class="text-lg font-medium text-white">{{ key }}</h3>
-                                <span class="px-2 py-0.5 bg-green-500 bg-opacity-20 text-green-400 text-xs rounded-full border border-green-500 border-opacity-30">Active</span>
-                            </div>
-                            <p class="text-slate-400 text-sm font-mono truncate">{{ url }}</p>
-                        </div>
+                    {% endfor %}
+                  {% endif %}
+                {% endwith %}
 
-                        <!-- Arrow Icon -->
-                        <div class="flex-shrink-0">
-                            <svg class="w-5 h-5 text-slate-400 group-hover:text-blue-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
-                            </svg>
-                        </div>
+                <form method="POST" action="/" class="space-y-4">
+                    <div>
+                        <label class="form-label">Database Connection URL</label>
+                        <textarea
+                            name="db_url"
+                            rows="3"
+                            placeholder="postgres://external_user:password@hostname.render.com/database_name"
+                            class="form-textarea"
+                            required
+                        ></textarea>
                     </div>
-                </a>
-                {% endfor %}
+                    <button type="submit" class="submit-btn">
+                        ⚡ Connect to Instance
+                    </button>
+                </form>
+
+                <div class="features" style="margin-top:20px;">
+                    <div class="feature-chip"><span></span> Chiffrement SSL</div>
+                    <div class="feature-chip"><span></span> Session Only</div>
+                    <div class="feature-chip"><span></span> Zéro persistance</div>
+                </div>
+            </div>
+
+            <div class="card-footer">
+                <svg class="lock-icon w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                </svg>
+                <span class="footer-note">Les informations de connexion sont stockées uniquement dans votre session navigateur.</span>
             </div>
         </div>
+
     </div>
 </main>
 
 <!-- Footer -->
-<footer class="fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-700 px-6 py-3">
-    <div class="flex items-center justify-between text-xs text-slate-400">
-        <span>DB Monitor v1.0</span>
-        <span>{{ dbs|length }} server(s) configured</span>
+<footer class="z-content" style="position:relative;">
+    <div class="footer-inner">
+        <span class="footer-brand">DB Monitor v2.0</span>
+        <div class="footer-badges">
+            <span class="footer-badge badge-pg">PostgreSQL Ready</span>
+            <span class="footer-badge badge-mode">Manual Mode</span>
+        </div>
     </div>
 </footer>
 
