@@ -6,6 +6,7 @@ from datetime import datetime
 import csv
 import io
 import gzip
+import json
 
 load_dotenv()
 app = Flask(__name__)
@@ -167,13 +168,13 @@ def export_sql():
         cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY table_name")
         tables = [t[0] for t in cur.fetchall()]
         
-        sql_output = f"-- DB Backup Render-Compatible - {datetime.now()}\n"
+        sql_output = f"-- DB Backup Render-Compatible (JSON FIX) - {datetime.now()}\n"
         sql_output += "BEGIN;\n\n"
 
         for table in tables:
             sql_output += f'DROP TABLE IF EXISTS "{table}" CASCADE;\n'
             
-            # Récupération des colonnes avec détection des séquences
+            # Récupération structure
             cur.execute("""
                 SELECT column_name, data_type, is_nullable, column_default
                 FROM information_schema.columns 
@@ -184,29 +185,18 @@ def export_sql():
             
             sql_output += f'CREATE TABLE "{table}" (\n'
             col_defs = []
-            
             for col in columns_info:
                 name, dtype, nullable, default = col
-                
-                # --- LOGIQUE DE CONTOURNEMENT POUR LES SÉQUENCES (SERIAL) ---
-                # Si le défaut contient 'nextval', on remplace par SERIAL pour que Postgres crée la séquence
                 if default and 'nextval' in default:
-                    if 'bigint' in dtype:
-                        line = f'    "{name}" BIGSERIAL'
-                    else:
-                        line = f'    "{name}" SERIAL'
-                    # Le type SERIAL inclut déjà NOT NULL et la création de séquence
+                    line = f'    "{name}" {"BIGSERIAL" if "bigint" in dtype else "SERIAL"}'
                 else:
                     line = f'    "{name}" {dtype}'
                     if nullable == "NO": line += " NOT NULL"
                     if default: line += f" DEFAULT {default}"
-                
                 col_defs.append(line)
-            
-            sql_output += ",\n".join(col_defs)
-            sql_output += "\n);\n\n"
+            sql_output += ",\n".join(col_defs) + "\n);\n\n"
 
-            # Données (INSERT INTO)
+            # Récupération Données
             cur.execute(f'SELECT * FROM "{table}"')
             rows = cur.fetchall()
             if rows:
@@ -216,14 +206,26 @@ def export_sql():
                 for row in rows:
                     vals = []
                     for v in row:
-                        if v is None: vals.append("NULL")
-                        elif isinstance(v, (int, float, bool)): vals.append(str(v).lower())
+                        if v is None:
+                            vals.append("NULL")
+                        elif isinstance(v, (dict, list)):
+                            # --- FIX JSON ICI ---
+                            # On force le format JSON correct avec doubles guillemets
+                            json_str = json.dumps(v)
+                            # On échappe les simples quotes SQL
+                            vals.append(f"'{json_str.replace("'", "''")}'")
+                        elif isinstance(v, bool):
+                            vals.append("true" if v else "false")
+                        elif isinstance(v, (int, float)):
+                            vals.append(str(v))
                         else:
-                            vals.append(f"'{str(v).replace("'", "''")}'")
+                            # Pour tout le reste (text, varchar, date)
+                            # On convertit en string et on échappe les quotes SQL
+                            escaped = str(v).replace("'", "''")
+                            vals.append(f"'{escaped}'")
+                    
                     sql_output += f'INSERT INTO "{table}" ({col_str}) VALUES ({", ".join(vals)});\n'
                 
-                # --- SYNCHRONISATION DES SÉQUENCES APRÈS INSERT ---
-                # On cherche si une colonne 'id' existe pour recaler le compteur
                 if "id" in col_names:
                     sql_output += f"SELECT setval(pg_get_serial_sequence('\"{table}\"', 'id'), coalesce(MAX(id), 1)) FROM \"{table}\";\n"
             
@@ -232,13 +234,13 @@ def export_sql():
         sql_output += "COMMIT;\n"
         conn.close()
         
-        # Compression Gzip (indispensable pour passer le WAF Render)
+        # Compression Gzip (Contourne le 403 Forbidden de Render)
         mem = io.BytesIO()
         with gzip.GzipFile(fileobj=mem, mode='wb') as f:
             f.write(sql_output.encode('utf-8'))
         mem.seek(0)
         
-        return send_file(mem, as_attachment=True, download_name=f"render_fix_{datetime.now().strftime('%H%M%S')}.sql.gz", mimetype="application/gzip")
+        return send_file(mem, as_attachment=True, download_name=f"render_json_fix.sql.gz", mimetype="application/gzip")
 
     except Exception as e:
         flash(f"❌ Erreur export: {e}", "error")
